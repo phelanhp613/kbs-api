@@ -1,0 +1,48 @@
+# PHP
+# Test and package your PHP project.
+# Add steps that run tests, save build artifacts, deploy, and more:
+# https://docs.microsoft.com/azure/devops/pipelines/languages/php
+
+trigger:
+- master
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  phpVersion: 8.1
+  folderVersion: $(date +%N)
+
+steps:
+  - task: DownloadSecureFile@1
+    name: privateKey
+    displayName: 'Download CA certificate'
+    inputs:
+      secureFile: 'private-key.cer'
+
+  - script: |
+      mkdir ~/.ssh
+      sudo chown root:root $(privateKey.secureFilePath)
+      sudo chmod a+r $(privateKey.secureFilePath)
+      sudo cp $(privateKey.secureFilePath) /root/.ssh/id_rsa
+      sudo chmod 777 /root/.ssh/id_rsa
+      sudo cp /root/.ssh/id_rsa ~/.ssh/id_rsa
+      ssh-keyscan -t rsa 13.229.64.199 >> ~/.ssh/known_hosts
+      projectPath="/home/ubuntu/deploy/CareerMarket-API"
+      backupConfig="/home/ubuntu/deploy/backup-config"
+      path="/home/ubuntu/deploy/CareerMarket-API-${{ variables.folderVersion }}"
+      echo "Deploying to ${path}"
+      scp -r $(pwd) "ubuntu@13.229.64.199:${path}"
+      ssh ubuntu@13.229.64.199  "cp ${projectPath}/.env ${backupConfig}/.env &&
+        cp -r ${projectPath}/storage ${backupConfig}/storage &&
+        sudo rm -rf ${projectPath} && 
+        mv ${path} ${projectPath} && 
+        cp ${backupConfig}/.env ${projectPath}/.env
+        sudo rm -rf ${backupConfig}/.env &&
+        sudo rm -rf ${projectPath}/storage &&
+        cp -r ${backupConfig}/storage ${projectPath}/ &&
+        sudo rm -rf ${backupConfig}/storage &&
+        chmod u+x ${projectPath}/deploy.sh && 
+        ${projectPath}/deploy.sh"
+    displayName: 'copy source code to EC2'
+
